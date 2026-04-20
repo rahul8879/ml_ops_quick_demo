@@ -30,8 +30,6 @@ scale_to_zero     = dbutils.widgets.get("scale_to_zero").lower() == "true"
 
 model_fqn = f"{catalog}.{models_schema}.{model_name}"
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{monitoring_schema}")
-
 # COMMAND ----------
 
 import mlflow

@@ -20,8 +20,6 @@ run_date      = dbutils.widgets.get("run_date")
 bronze_fqn = f"{catalog}.{bronze_schema}.{bronze_table}"
 silver_fqn = f"{catalog}.{silver_schema}.{silver_table}"
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{silver_schema}")
-
 # COMMAND ----------
 
 from pyspark.sql import functions as F

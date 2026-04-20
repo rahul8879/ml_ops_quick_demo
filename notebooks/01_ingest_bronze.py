@@ -21,10 +21,6 @@ bronze_fqn = f"{catalog}.{bronze_schema}.{bronze_table}"
 
 # COMMAND ----------
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{bronze_schema}")
-
-# COMMAND ----------
-
 from pyspark.sql.functions import current_timestamp, input_file_name, lit
 
 schema_location = f"{checkpoint_path}/_schema"

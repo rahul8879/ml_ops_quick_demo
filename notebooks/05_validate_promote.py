@@ -48,8 +48,6 @@ validation_fqn = f"{catalog}.{monitoring_schema}.{validation_table}"
 import mlflow
 from mlflow.tracking import MlflowClient
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{monitoring_schema}")
-
 mlflow.set_registry_uri("databricks-uc")
 client = MlflowClient()
 

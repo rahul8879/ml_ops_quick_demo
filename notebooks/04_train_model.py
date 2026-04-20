@@ -38,7 +38,6 @@ model_fqn   = f"{catalog}.{models_schema}.{model_name}"
 
 import mlflow
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{models_schema}")
 mlflow.set_registry_uri("databricks-uc")
 mlflow.set_experiment(experiment_name)
 mlflow.autolog(log_input_examples=False, log_model_signatures=True, silent=True)
