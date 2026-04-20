@@ -1,6 +1,5 @@
 # Databricks Asset Bundle — Insurance Fraud MLOps (DEV / DEMO)
-# Minimal single-target bundle. workspace.host is read from DATABRICKS_HOST
-# or ~/.databrickscfg, so no URLs are hardcoded here.
+# Uses an existing all-purpose cluster (rahul-dev) instead of a job cluster.
 
 bundle:
   name: insurance-fraud-mlops
@@ -12,28 +11,19 @@ variables:
   endpoint_name:
     description: "Model serving endpoint name"
     default: fraud-detection-endpoint
+  existing_cluster_id:
+    description: "ID of the existing all-purpose cluster to run tasks on"
+    default: PASTE_YOUR_CLUSTER_ID_HERE      # e.g. 0420-103322-abcd1234
 
 resources:
   jobs:
     insurance_fraud_pipeline:
       name: "insurance_fraud_pipeline-${bundle.target}"
-
-      # Manual runs only for demo — no schedule.
       max_concurrent_runs: 1
-
-      job_clusters:
-        - job_cluster_key: fraud_pipeline_cluster
-          new_cluster:
-            spark_version: "15.4.x-cpu-ml-scala2.12"
-            node_type_id: "Standard_DS3_v2"
-            autoscale:
-              min_workers: 2
-              max_workers: 6
-            data_security_mode: SINGLE_USER
 
       tasks:
         - task_key: ingest_bronze
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/01_ingest_bronze.py
             base_parameters:
@@ -43,7 +33,7 @@ resources:
 
         - task_key: transform_silver
           depends_on: [{ task_key: ingest_bronze }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/02_transform_silver.py
             base_parameters:
@@ -51,7 +41,7 @@ resources:
 
         - task_key: feature_engineering
           depends_on: [{ task_key: transform_silver }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/03_feature_engineering.py
             base_parameters:
@@ -59,7 +49,7 @@ resources:
 
         - task_key: train_model
           depends_on: [{ task_key: feature_engineering }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/04_train_model.py
             base_parameters:
@@ -68,7 +58,7 @@ resources:
 
         - task_key: validate_promote
           depends_on: [{ task_key: train_model }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/05_validate_promote.py
             base_parameters:
@@ -76,7 +66,7 @@ resources:
 
         - task_key: deploy_serving
           depends_on: [{ task_key: validate_promote }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/06_deploy_serving.py
             base_parameters:
@@ -85,7 +75,7 @@ resources:
 
         - task_key: monitoring
           depends_on: [{ task_key: deploy_serving }]
-          job_cluster_key: fraud_pipeline_cluster
+          existing_cluster_id: ${var.existing_cluster_id}
           notebook_task:
             notebook_path: ./notebooks/07_monitoring.py
             base_parameters:
