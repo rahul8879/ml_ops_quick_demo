@@ -38,6 +38,8 @@ resources:
             notebook_path: ./notebooks/01_ingest_bronze.py
             base_parameters:
               catalog: ${var.catalog}
+              source_path:     /Volumes/${var.catalog}/raw/claims/
+              checkpoint_path: /Volumes/${var.catalog}/raw/checkpoints/bronze_raw_claims
 
         - task_key: transform_silver
           depends_on: [{ task_key: ingest_bronze }]
