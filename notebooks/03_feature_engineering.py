@@ -33,37 +33,59 @@ import pandas as pd
 
 silver_pdf = spark.table(silver_fqn).toPandas()
 
-claim_date_col = None
-for c in ["ClaimDate", "DateOfIncident", "IncidentDate"]:
-    if c in silver_pdf.columns:
-        claim_date_col = c
-        break
-if claim_date_col is None:
-    silver_pdf["ClaimDate"] = pd.Timestamp.utcnow().normalize()
-    claim_date_col = "ClaimDate"
+# Bucket → numeric midpoint mappings (Kaggle fraud_oracle.csv categorical columns)
+VEHICLE_PRICE_MAP = {
+    "less than 20000":  15000,
+    "20000 to 29000":   25000,
+    "30000 to 39000":   35000,
+    "40000 to 59000":   50000,
+    "60000 to 69000":   65000,
+    "more than 69000":  80000,
+}
 
-silver_pdf[claim_date_col]       = pd.to_datetime(silver_pdf[claim_date_col],       errors="coerce")
-silver_pdf["PolicyInceptionDate"] = pd.to_datetime(silver_pdf.get("PolicyInceptionDate"), errors="coerce")
+AGE_OF_VEHICLE_MAP = {
+    "new":          0,
+    "2 years":      2,
+    "3 years":      3,
+    "4 years":      4,
+    "5 years":      5,
+    "6 years":      6,
+    "7 years":      7,
+    "more than 7":  8,
+}
 
-current_year = int(run_date.split("-")[0])
+DAYS_POLICY_MAP = {
+    "none":         0,
+    "1 to 7":       4,
+    "8 to 15":      12,
+    "15 to 30":     22,
+    "more than 30": 45,
+}
+
+PAST_CLAIMS_MAP = {
+    "none":         0,
+    "1":            1,
+    "2 to 4":       3,
+    "more than 4":  5,
+}
 
 df = silver_pdf.copy()
-df["claim_to_premium_ratio"] = df["ClaimAmount"] / df["AnnualPremium"].replace(0, pd.NA)
-df["vehicle_age"]            = (current_year - df["VehicleYear"]).astype("Int64")
-df["high_deductible_flag"]   = (df["Deductible"] > 1000).astype(int)
-df["days_since_policy_start"] = (df[claim_date_col] - df["PolicyInceptionDate"]).dt.days.astype("Int64")
 
-holder_col = "PolicyHolderID" if "PolicyHolderID" in df.columns else "PolicyNumber"
-df = df.sort_values([holder_col, claim_date_col])
-df["prior_claim_count"]    = df.groupby(holder_col).cumcount()
-df["repeat_claimant_flag"] = (df["prior_claim_count"] > 1).astype(int)
+df["vehicle_price_numeric"]    = df["VehiclePrice"].map(VEHICLE_PRICE_MAP).fillna(0).astype(int)
+df["vehicle_age"]              = df["AgeOfVehicle"].map(AGE_OF_VEHICLE_MAP).fillna(0).astype(int)
+df["days_since_policy_start"]  = df["Days_Policy_Claim"].map(DAYS_POLICY_MAP).fillna(0).astype(int)
+df["prior_claim_count"]        = df["PastNumberOfClaims"].map(PAST_CLAIMS_MAP).fillna(0).astype(int)
 
-if "Age" in df.columns:
-    df["driver_age_bucket"] = pd.cut(
-        df["Age"],
-        bins=[-1, 24, 39, 59, 200],
-        labels=["under_25", "25_to_39", "40_to_59", "60_plus"],
-    ).astype(str)
+df["high_deductible_flag"]     = (df["Deductible"] > 500).astype(int)
+df["repeat_claimant_flag"]     = df["PastNumberOfClaims"].isin(["2 to 4", "more than 4"]).astype(int)
+df["no_police_report_flag"]    = (df["PoliceReportFiled"] == "No").astype(int)
+df["no_witness_flag"]          = (df["WitnessPresent"] == "No").astype(int)
+df["address_changed_flag"]     = (df["AddressChange_Claim"] != "no change").astype(int)
+df["fault_policyholder_flag"]  = (df["Fault"] == "Policy Holder").astype(int)
+df["internal_agent_flag"]      = (df["AgentType"] == "Internal").astype(int)
+
+df["claim_to_premium_ratio"]   = df["vehicle_price_numeric"] / df["Deductible"].replace(0, pd.NA)
+df["claim_to_premium_ratio"]   = df["claim_to_premium_ratio"].fillna(0).astype(float)
 
 keep = [
     "PolicyNumber",
@@ -73,10 +95,15 @@ keep = [
     "days_since_policy_start",
     "repeat_claimant_flag",
     "prior_claim_count",
-    "ClaimAmount",
-    "AnnualPremium",
+    "vehicle_price_numeric",
+    "no_police_report_flag",
+    "no_witness_flag",
+    "address_changed_flag",
+    "fault_policyholder_flag",
+    "internal_agent_flag",
     "Deductible",
-    "driver_age_bucket",
+    "DriverRating",
+    "Age",
 ]
 keep = [c for c in keep if c in df.columns]
 

@@ -23,42 +23,28 @@ silver_fqn = f"{catalog}.{silver_schema}.{silver_table}"
 # COMMAND ----------
 
 from pyspark.sql import functions as F
-from pyspark.sql.types import IntegerType, DoubleType, StringType
+from pyspark.sql.types import IntegerType, StringType
 from pyspark.sql.window import Window
 
 df = spark.table(bronze_fqn)
 
 int_cols = [
-    "Age", "Deductible", "DriverRating", "Year", "VehicleYear",
-    "RepNumber", "PolicyNumber", "WeekOfMonth", "WeekOfMonthClaimed",
-    "FraudFound_P",
+    "WeekOfMonth", "WeekOfMonthClaimed", "Age",
+    "FraudFound_P", "PolicyNumber", "RepNumber",
+    "Deductible", "DriverRating", "Year",
 ]
-double_cols = ["ClaimAmount", "AnnualPremium"]
-date_cols   = ["ClaimDate", "PolicyInceptionDate", "DateOfIncident"]
-
 for c in int_cols:
     if c in df.columns:
         df = df.withColumn(c, F.col(c).cast(IntegerType()))
-for c in double_cols:
-    if c in df.columns:
-        df = df.withColumn(c, F.col(c).cast(DoubleType()))
-for c in date_cols:
-    if c in df.columns:
-        df = df.withColumn(c, F.coalesce(
-            F.to_date(F.col(c), "yyyy-MM-dd"),
-            F.to_date(F.col(c), "MM/dd/yyyy"),
-            F.to_date(F.col(c), "dd-MM-yyyy"),
-        ))
 
 for c in [f.name for f in df.schema.fields if isinstance(f.dataType, StringType)]:
     df = df.withColumn(c, F.trim(F.col(c)))
 
 df = df.where(F.col("PolicyNumber").isNotNull()).fillna({
-    "ClaimAmount":   0.0,
-    "AnnualPremium": 0.0,
-    "Deductible":    0,
-    "DriverRating":  0,
-    "FraudFound_P":  0,
+    "Deductible":   0,
+    "DriverRating": 0,
+    "Age":          0,
+    "FraudFound_P": 0,
 })
 
 order_col = "ingestion_timestamp" if "ingestion_timestamp" in df.columns else "PolicyNumber"

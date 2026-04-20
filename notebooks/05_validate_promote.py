@@ -84,9 +84,15 @@ feature_cols = [
     "days_since_policy_start",
     "repeat_claimant_flag",
     "prior_claim_count",
-    "ClaimAmount",
-    "AnnualPremium",
+    "vehicle_price_numeric",
+    "no_police_report_flag",
+    "no_witness_flag",
+    "address_changed_flag",
+    "fault_policyholder_flag",
+    "internal_agent_flag",
     "Deductible",
+    "DriverRating",
+    "Age",
 ]
 feat_schema_cols = [c.name for c in spark.table(feature_fqn).schema.fields]
 feature_cols = [c for c in feature_cols if c in feat_schema_cols]
