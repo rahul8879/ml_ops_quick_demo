@@ -83,25 +83,27 @@ print(f"action={promotion_action}  gates={{f1:{f1_gate_pass}, auc:{auc_gate_pass
 
 # COMMAND ----------
 
-from pyspark.sql import Row
+import pandas as pd
 from pyspark.sql import functions as F
 
-audit = Row(
-    run_date                  = run_date,
-    evaluated_at              = datetime.utcnow(),
-    model_fqn                 = model_fqn,
-    candidate_version         = candidate_version,
-    candidate_run_id          = candidate.run_id,
-    candidate_f1              = candidate_f1,
-    candidate_roc_auc         = candidate_auc,
-    f1_gate_pass              = bool(f1_gate_pass),
-    auc_gate_pass             = bool(auc_gate_pass),
-    all_gates_pass            = bool(all_gates_pass),
-    promotion_action          = promotion_action,
-    previous_champion_version = int(champion_version) if champion_version is not None else None,
-    previous_champion_f1      = float(champion_f1)    if champion_f1      is not None else None,
-)
-audit_df = spark.createDataFrame([audit])
+audit = {
+    "run_date":                  run_date,
+    "evaluated_at":              datetime.utcnow(),
+    "model_fqn":                 model_fqn,
+    "candidate_version":         int(candidate_version),
+    "candidate_run_id":          candidate.run_id,
+    "candidate_f1":              float(candidate_f1),
+    "candidate_roc_auc":         float(candidate_auc),
+    "f1_gate_pass":              bool(f1_gate_pass),
+    "auc_gate_pass":             bool(auc_gate_pass),
+    "all_gates_pass":            bool(all_gates_pass),
+    "promotion_action":          promotion_action,
+    "previous_champion_version": int(champion_version) if champion_version is not None else -1,
+    "previous_champion_f1":      float(champion_f1)    if champion_f1      is not None else 0.0,
+}
+
+audit_pdf = pd.DataFrame([audit])
+audit_df  = spark.createDataFrame(audit_pdf)
 
 audit_df.write.format("delta").mode("append").saveAsTable(validation_fqn)
 
