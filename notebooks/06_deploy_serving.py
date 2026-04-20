@@ -124,12 +124,19 @@ print(f"ui:         {ui_url}")
 
 # COMMAND ----------
 
-sample_pdf = spark.table(f"{catalog}.gold.claim_features").limit(1).drop("feature_computed_at").toPandas()
+sample_pdf = (
+    spark.table(f"{catalog}.gold.claim_features")
+         .limit(1)
+         .drop("feature_computed_at", "PolicyNumber")
+         .toPandas()
+         .astype(float)
+         .fillna(0.0)
+)
 
 try:
     response = w.serving_endpoints.query(
         name=endpoint_name,
-        dataframe_records=sample_pdf.astype(object).where(sample_pdf.notna(), None).to_dict(orient="records"),
+        dataframe_records=sample_pdf.to_dict(orient="records"),
     )
     print(response)
 except Exception as e:

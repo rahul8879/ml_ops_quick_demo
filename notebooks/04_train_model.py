@@ -180,11 +180,9 @@ with mlflow.start_run(run_name=f"xgb_fraud_{run_date}") as run:
     except Exception as e:
         print(f"fi csv skipped: {e}")
 
-    fe.log_model(
-        model=model,
+    mlflow.xgboost.log_model(
+        xgb_model=model,
         artifact_path="model",
-        flavor=mlflow.xgboost,
-        training_set=training_set,
         registered_model_name=model_fqn,
         input_example=X_holdout.head(5),
     )
@@ -192,6 +190,7 @@ with mlflow.start_run(run_name=f"xgb_fraud_{run_date}") as run:
     mlflow.set_tag("run_date",  run_date)
     mlflow.set_tag("use_case",  "insurance_claims_fraud")
     mlflow.set_tag("algorithm", "xgboost")
+    mlflow.set_tag("feature_columns", ",".join(X_train_bal.columns.tolist()))
 
 print(f"run_id={run_id}  model={model_fqn}  f1={f1:.4f}  auc={auc:.4f}")
 
