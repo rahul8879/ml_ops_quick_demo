@@ -94,7 +94,7 @@ X = training_df.drop(columns=["FraudFound_P", "PolicyNumber"], errors="ignore")
 cat_cols = [c for c in X.columns if X[c].dtype == "object"]
 if cat_cols:
     X = pd.get_dummies(X, columns=cat_cols, drop_first=False)
-X = X.fillna(0.0)
+X = X.fillna(0.0).astype("float64")
 
 X_train, X_holdout, y_train, y_holdout = train_test_split(
     X, y, test_size=0.20, random_state=42, stratify=y

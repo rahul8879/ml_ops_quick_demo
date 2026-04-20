@@ -107,6 +107,12 @@ full_pdf = training_set.load_df().toPandas()
 
 y_all = full_pdf["FraudFound_P"].astype(int)
 X_all = full_pdf.drop(columns=["FraudFound_P", "PolicyNumber"], errors="ignore")
+
+cat_cols = [c for c in X_all.columns if X_all[c].dtype == "object"]
+if cat_cols:
+    X_all = pd.get_dummies(X_all, columns=cat_cols, drop_first=False)
+X_all = X_all.fillna(0.0).astype("float64")
+
 _, X_holdout, _, y_holdout = train_test_split(X_all, y_all, test_size=0.20, random_state=42, stratify=y_all)
 
 # COMMAND ----------
