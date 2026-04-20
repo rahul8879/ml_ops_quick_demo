@@ -27,8 +27,7 @@ run_date      = dbutils.widgets.get("run_date")
 silver_fqn  = f"{catalog}.{silver_schema}.{silver_table}"
 feature_fqn = f"{catalog}.{gold_schema}.{feature_table}"
 
-spark.sql(f"CREATE CATALOG IF NOT EXISTS {catalog}")
-spark.sql(f"CREATE SCHEMA  IF NOT EXISTS {catalog}.{gold_schema}")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{gold_schema}")
 
 # COMMAND ----------
 

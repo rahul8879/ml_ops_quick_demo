@@ -21,8 +21,7 @@ bronze_fqn = f"{catalog}.{bronze_schema}.{bronze_table}"
 
 # COMMAND ----------
 
-spark.sql(f"CREATE CATALOG IF NOT EXISTS {catalog}")
-spark.sql(f"CREATE SCHEMA  IF NOT EXISTS {catalog}.{bronze_schema}")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{bronze_schema}")
 
 # COMMAND ----------
 
