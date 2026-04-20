@@ -148,7 +148,6 @@ try:
         table_name=processed_fqn,
         output_schema_name=output_schema,
         inference_log=inference_log_cfg,
-        baseline_table_name=baseline_fqn,
         schedule=cron_hourly,
     )
 except Exception:
@@ -157,7 +156,6 @@ except Exception:
         output_schema_name=output_schema,
         assets_dir=assets_dir,
         inference_log=inference_log_cfg,
-        baseline_table_name=baseline_fqn,
         schedule=cron_hourly,
     )
 
