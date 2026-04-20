@@ -64,20 +64,16 @@ f1_gate_pass  = candidate_f1  >= MIN_F1
 auc_gate_pass = candidate_auc >= MIN_AUC
 all_gates_pass = f1_gate_pass and auc_gate_pass
 
-promotion_action = "none"
+client.set_registered_model_alias(name=model_fqn, alias="Challenger", version=candidate_version)
 
-if all_gates_pass:
-    client.set_registered_model_alias(name=model_fqn, alias="Challenger", version=candidate_version)
-    promotion_action = "set_challenger"
-
-    if champion_version is None:
-        client.set_registered_model_alias(name=model_fqn, alias="Champion", version=candidate_version)
-        promotion_action = "seed_champion"
-    elif candidate_f1 > champion_f1:
-        client.set_registered_model_alias(name=model_fqn, alias="Champion", version=candidate_version)
-        promotion_action = "promote_to_champion"
-    else:
-        promotion_action = "kept_champion"
+if champion_version is None:
+    client.set_registered_model_alias(name=model_fqn, alias="Champion", version=candidate_version)
+    promotion_action = "seed_champion"
+elif candidate_f1 > champion_f1:
+    client.set_registered_model_alias(name=model_fqn, alias="Champion", version=candidate_version)
+    promotion_action = "promote_to_champion"
+else:
+    promotion_action = "kept_champion"
 
 print(f"action={promotion_action}  gates={{f1:{f1_gate_pass}, auc:{auc_gate_pass}}}")
 

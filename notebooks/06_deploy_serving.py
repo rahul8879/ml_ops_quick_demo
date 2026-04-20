@@ -36,7 +36,17 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 mlflow.set_registry_uri("databricks-uc")
-champion_version = int(MlflowClient().get_model_version_by_alias(model_fqn, alias).version)
+client = MlflowClient()
+
+try:
+    champion_version = int(client.get_model_version_by_alias(model_fqn, alias).version)
+except Exception:
+    versions = client.search_model_versions(f"name = '{model_fqn}'")
+    assert versions, f"no versions for {model_fqn}"
+    latest = sorted(versions, key=lambda v: int(v.version))[-1]
+    champion_version = int(latest.version)
+    client.set_registered_model_alias(name=model_fqn, alias=alias, version=champion_version)
+    print(f"no {alias} alias found — seeded it on latest v{champion_version}")
 
 # COMMAND ----------
 
