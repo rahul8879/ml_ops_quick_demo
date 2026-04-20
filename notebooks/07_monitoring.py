@@ -8,16 +8,17 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog",           "wcqmlopsdemo",              "catalog")
-dbutils.widgets.text("monitoring_schema", "monitoring",                "monitoring schema")
-dbutils.widgets.text("inference_table",   "fraud_inference_payload",   "inference table")
-dbutils.widgets.text("gold_schema",       "gold",                      "gold schema")
-dbutils.widgets.text("feature_table",     "claim_features",            "feature/baseline table")
-dbutils.widgets.text("granularity",       "1 hour",                    "granularity")
-dbutils.widgets.text("timestamp_col",     "timestamp_ms",              "timestamp column")
-dbutils.widgets.text("prediction_col",    "prediction",                "prediction column")
-dbutils.widgets.text("label_col",         "",                          "label column")
-dbutils.widgets.text("model_id_col",      "model_version",             "model id column")
+dbutils.widgets.text("catalog",           "wcqmlopsdemo",                     "catalog")
+dbutils.widgets.text("monitoring_schema", "monitoring",                       "monitoring schema")
+dbutils.widgets.text("inference_table",   "fraud_inference_payload_payload",  "inference table")
+dbutils.widgets.text("gold_schema",       "gold",                             "gold schema")
+dbutils.widgets.text("feature_table",     "claim_features",                   "baseline table")
+dbutils.widgets.text("granularity",       "1 hour",                           "granularity")
+dbutils.widgets.text("timestamp_col",     "timestamp_ms",                     "timestamp column")
+dbutils.widgets.text("prediction_col",    "prediction",                       "prediction column")
+dbutils.widgets.text("label_col",         "",                                 "label column")
+dbutils.widgets.text("model_id_col",      "model_version",                    "model id column")
+dbutils.widgets.text("assets_dir",        "/Workspace/Shared/lakehouse_monitoring/fraud_inference", "assets dir")
 
 catalog           = dbutils.widgets.get("catalog")
 monitoring_schema = dbutils.widgets.get("monitoring_schema")
@@ -29,6 +30,7 @@ timestamp_col     = dbutils.widgets.get("timestamp_col")
 prediction_col    = dbutils.widgets.get("prediction_col")
 label_col         = dbutils.widgets.get("label_col") or None
 model_id_col      = dbutils.widgets.get("model_id_col")
+assets_dir        = dbutils.widgets.get("assets_dir")
 
 inference_fqn = f"{catalog}.{monitoring_schema}.{inference_table}"
 baseline_fqn  = f"{catalog}.{gold_schema}.{feature_table}"
@@ -38,7 +40,9 @@ output_schema = f"{catalog}.{monitoring_schema}"
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import (
-    MonitorInferenceLog, MonitorInferenceLogProblemType, MonitorCronSchedule,
+    MonitorInferenceLog,
+    MonitorInferenceLogProblemType,
+    MonitorCronSchedule,
 )
 
 w = WorkspaceClient()
@@ -58,16 +62,17 @@ try:
     w.quality_monitors.get(table_name=inference_fqn)
     monitor = w.quality_monitors.update(
         table_name=inference_fqn,
-        inference_log=inference_log_cfg,
         output_schema_name=output_schema,
+        inference_log=inference_log_cfg,
         baseline_table_name=baseline_fqn,
         schedule=cron_hourly,
     )
 except Exception:
     monitor = w.quality_monitors.create(
         table_name=inference_fqn,
-        inference_log=inference_log_cfg,
         output_schema_name=output_schema,
+        assets_dir=assets_dir,
+        inference_log=inference_log_cfg,
         baseline_table_name=baseline_fqn,
         schedule=cron_hourly,
     )
