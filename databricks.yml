@@ -8,7 +8,7 @@ bundle:
 variables:
   catalog:
     description: "Unity Catalog name"
-    default: insurance_demo
+    default: wcqmlopsdemo
   endpoint_name:
     description: "Model serving endpoint name"
     default: fraud-detection-endpoint
