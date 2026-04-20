@@ -54,7 +54,7 @@ resources:
             notebook_path: ./notebooks/04_train_model.py
             base_parameters:
               catalog: ${var.catalog}
-              experiment_name: "/insurance_fraud/xgb_fraud_detection"
+              experiment_name: "/Shared/insurance_fraud_xgb"
 
         - task_key: validate_promote
           depends_on: [{ task_key: train_model }]

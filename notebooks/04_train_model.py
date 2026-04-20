@@ -17,7 +17,7 @@ dbutils.widgets.text("gold_schema",     "gold",                                 
 dbutils.widgets.text("feature_table",   "claim_features",                       "feature table")
 dbutils.widgets.text("models_schema",   "models",                               "models schema")
 dbutils.widgets.text("model_name",      "fraud_detector",                       "model name")
-dbutils.widgets.text("experiment_name", "/insurance_fraud/xgb_fraud_detection", "experiment")
+dbutils.widgets.text("experiment_name", "/Shared/insurance_fraud_xgb", "experiment")
 dbutils.widgets.text("run_date",        datetime.utcnow().strftime("%Y-%m-%d"), "run date")
 
 catalog         = dbutils.widgets.get("catalog")
