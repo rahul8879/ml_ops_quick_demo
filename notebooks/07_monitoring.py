@@ -86,18 +86,18 @@ if payload_exists:
             {ts_expr}                        AS timestamp_ms,
             CAST({model_id_expr} AS STRING)  AS model_version,
             {prediction_expr}                AS prediction,
-            CAST(NULL AS INT)                AS label
+            CAST(NULL AS DOUBLE)             AS label
         FROM {payload_fqn}
         {where_clause}
     """)
 else:
     print(f"{payload_fqn} not found — creating empty processed table with the expected schema.")
-    from pyspark.sql.types import StructType, StructField, LongType, StringType, DoubleType, IntegerType
+    from pyspark.sql.types import StructType, StructField, LongType, StringType, DoubleType
     schema = StructType([
-        StructField("timestamp_ms",  LongType(),    True),
-        StructField("model_version", StringType(),  True),
-        StructField("prediction",    DoubleType(),  True),
-        StructField("label",         IntegerType(), True),
+        StructField("timestamp_ms",  LongType(),   True),
+        StructField("model_version", StringType(), True),
+        StructField("prediction",    DoubleType(), True),
+        StructField("label",         DoubleType(), True),
     ])
     spark.createDataFrame([], schema) \
          .write.format("delta").mode("overwrite").saveAsTable(processed_fqn)
@@ -110,7 +110,7 @@ if row_count == 0:
     import time
     spark.sql(f"""
         INSERT INTO {processed_fqn} VALUES
-        ({int(time.time()*1000)}, 'bootstrap', 0.0, 0)
+        ({int(time.time()*1000)}, 'bootstrap', 0.0, 0.0)
     """)
     print("inserted one bootstrap row")
 
