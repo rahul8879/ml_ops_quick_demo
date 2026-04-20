@@ -44,27 +44,51 @@ if payload_exists:
     payload_cols = {c.name for c in spark.table(payload_fqn).schema.fields}
     print(f"payload cols: {sorted(payload_cols)}")
 
-    model_id_expr = (
-        "served_entity_name" if "served_entity_name" in payload_cols
-        else ("served_entity_id" if "served_entity_id" in payload_cols else "'unknown'")
+    if "timestamp_ms" in payload_cols:
+        ts_expr = "CAST(timestamp_ms AS BIGINT)"
+    elif "request_time" in payload_cols:
+        ts_expr = "CAST(unix_millis(request_time) AS BIGINT)"
+    elif "request_date" in payload_cols:
+        ts_expr = "CAST(unix_millis(CAST(request_date AS TIMESTAMP)) AS BIGINT)"
+    else:
+        ts_expr = "CAST(unix_millis(current_timestamp()) AS BIGINT)"
+
+    if "served_entity_name" in payload_cols:
+        model_id_expr = "served_entity_name"
+    elif "served_entity_id" in payload_cols:
+        model_id_expr = "served_entity_id"
+    else:
+        model_id_expr = "'unknown'"
+
+    prediction_expr = (
+        "CAST(get_json_object(response, '$.predictions[0]') AS DOUBLE)"
+        if "response" in payload_cols
+        else "CAST(NULL AS DOUBLE)"
     )
 
+    filter_parts = []
+    if "status_code" in payload_cols:
+        filter_parts.append("status_code = 200")
     if "response" in payload_cols:
-        prediction_expr = "CAST(get_json_object(response, '$.predictions[0]') AS DOUBLE)"
-    else:
-        prediction_expr = "CAST(NULL AS DOUBLE)"
+        filter_parts.append("response IS NOT NULL")
+    where_clause = "WHERE " + " AND ".join(filter_parts) if filter_parts else ""
+
+    print(f"ts_expr        : {ts_expr}")
+    print(f"model_id_expr  : {model_id_expr}")
+    print(f"prediction_expr: {prediction_expr}")
+    print(f"where_clause   : {where_clause}")
 
     spark.sql(f"""
         CREATE OR REPLACE TABLE {processed_fqn}
         USING DELTA
         AS
         SELECT
-            CAST(timestamp_ms AS BIGINT)                       AS timestamp_ms,
-            CAST({model_id_expr} AS STRING)                    AS model_version,
-            {prediction_expr}                                  AS prediction,
-            CAST(NULL AS INT)                                  AS label
+            {ts_expr}                        AS timestamp_ms,
+            CAST({model_id_expr} AS STRING)  AS model_version,
+            {prediction_expr}                AS prediction,
+            CAST(NULL AS INT)                AS label
         FROM {payload_fqn}
-        WHERE status_code = 200 AND response IS NOT NULL
+        {where_clause}
     """)
 else:
     print(f"{payload_fqn} not found — creating empty processed table with the expected schema.")
