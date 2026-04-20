@@ -14,7 +14,7 @@ dbutils.widgets.text("model_name",        "fraud_detector",            "model na
 dbutils.widgets.text("alias",             "Champion",                  "alias")
 dbutils.widgets.text("endpoint_name",     "fraud-detection-endpoint",  "endpoint")
 dbutils.widgets.text("monitoring_schema", "monitoring",                "monitoring schema")
-dbutils.widgets.text("inference_table",   "fraud_inference_payload",   "inference table")
+dbutils.widgets.text("inference_table",   "fraud_inference_payload",   "inference table prefix")
 dbutils.widgets.text("workload_size",     "Small",                     "workload size")
 dbutils.widgets.text("scale_to_zero",     "true",                      "scale to zero")
 
@@ -46,14 +46,18 @@ except Exception:
     latest = sorted(versions, key=lambda v: int(v.version))[-1]
     champion_version = int(latest.version)
     client.set_registered_model_alias(name=model_fqn, alias=alias, version=champion_version)
-    print(f"no {alias} alias found — seeded it on latest v{champion_version}")
+    print(f"no {alias} alias — seeded on latest v{champion_version}")
 
 # COMMAND ----------
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import (
-    EndpointCoreConfigInput, ServedEntityInput, TrafficConfig, Route,
-    AutoCaptureConfigInput,
+    EndpointCoreConfigInput,
+    ServedEntityInput,
+    TrafficConfig,
+    Route,
+    AiGatewayConfig,
+    AiGatewayInferenceTableConfig,
 )
 
 w = WorkspaceClient()
@@ -66,35 +70,46 @@ served_entity = ServedEntityInput(
     scale_to_zero_enabled=scale_to_zero,
 )
 
-traffic = TrafficConfig(routes=[Route(served_model_name="fraud-detector-champion", traffic_percentage=100)])
+traffic = TrafficConfig(routes=[
+    Route(served_model_name="fraud-detector-champion", traffic_percentage=100),
+])
 
-auto_capture = AutoCaptureConfigInput(
-    catalog_name=catalog,
-    schema_name=monitoring_schema,
-    table_name_prefix=inference_table,
-    enabled=True,
+ai_gateway = AiGatewayConfig(
+    inference_table_config=AiGatewayInferenceTableConfig(
+        enabled=True,
+        catalog_name=catalog,
+        schema_name=monitoring_schema,
+        table_name_prefix=inference_table,
+    ),
 )
 
+endpoint_exists = False
 try:
     w.serving_endpoints.get(name=endpoint_name)
+    endpoint_exists = True
+except Exception:
+    endpoint_exists = False
+
+if endpoint_exists:
     w.serving_endpoints.update_config_and_wait(
         name=endpoint_name,
         served_entities=[served_entity],
         traffic_config=traffic,
-        auto_capture_config=auto_capture,
     )
-except Exception:
+    w.serving_endpoints.put_ai_gateway(
+        name=endpoint_name,
+        inference_table_config=ai_gateway.inference_table_config,
+    )
+else:
     w.serving_endpoints.create_and_wait(
         name=endpoint_name,
         config=EndpointCoreConfigInput(
             name=endpoint_name,
             served_entities=[served_entity],
             traffic_config=traffic,
-            auto_capture_config=auto_capture,
         ),
+        ai_gateway=ai_gateway,
     )
-
-endpoint = w.serving_endpoints.get(name=endpoint_name)
 
 # COMMAND ----------
 
@@ -111,17 +126,17 @@ print(f"ui:         {ui_url}")
 
 sample_pdf = spark.table(f"{catalog}.gold.claim_features").limit(1).drop("feature_computed_at").toPandas()
 
-payload = {
-    "columns": list(sample_pdf.columns),
-    "data":    sample_pdf.astype(object).where(sample_pdf.notna(), None).values.tolist(),
-}
-
 try:
-    response = w.serving_endpoints.query(name=endpoint_name, dataframe_split=payload)
+    response = w.serving_endpoints.query(
+        name=endpoint_name,
+        dataframe_records=sample_pdf.astype(object).where(sample_pdf.notna(), None).to_dict(orient="records"),
+    )
     print(response)
 except Exception as e:
     print(f"smoke test: {e}")
 
 # COMMAND ----------
 
-dbutils.notebook.exit(f"endpoint={endpoint_name};version={champion_version};invocation_url={invocation_url}")
+dbutils.notebook.exit(
+    f"endpoint={endpoint_name};version={champion_version};invocation_url={invocation_url}"
+)
