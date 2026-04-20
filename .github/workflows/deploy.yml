@@ -1,0 +1,63 @@
+name: Databricks Asset Bundle CI/CD
+
+# ---------------------------------------------------------------------------
+# Validates on every pull request; deploys to prod on pushes to main.
+# Secrets required in the repo / org:
+#   DATABRICKS_HOST     e.g. https://adb-1234567890123456.78.azuredatabricks.net
+#   DATABRICKS_TOKEN    PAT or service-principal token with workspace access
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+
+  validate:
+    name: Validate bundle
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: databricks bundle validate (dev target)
+        run: databricks bundle validate --target dev
+
+      - name: databricks bundle validate (prod target)
+        run: databricks bundle validate --target prod
+
+  deploy-prod:
+    name: Deploy to prod
+    # Only on direct pushes to main (not PR merges that failed validation)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: databricks bundle deploy --target prod
+        run: databricks bundle deploy --target prod
+
+      - name: Summary
+        run: |
+          echo "Deployed bundle to prod target." >> $GITHUB_STEP_SUMMARY
+          echo "Workspace: $DATABRICKS_HOST"     >> $GITHUB_STEP_SUMMARY

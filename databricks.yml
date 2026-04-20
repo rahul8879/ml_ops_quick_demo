@@ -1,0 +1,180 @@
+# Databricks Asset Bundle — Vehicle Insurance Claims Fraud Detection
+# Docs: https://docs.databricks.com/en/dev-tools/bundles/
+#
+# Layout assumed by this bundle:
+#   notebooks/01_ingest_bronze.py
+#   notebooks/02_transform_silver.py
+#   notebooks/03_feature_engineering.py
+#   notebooks/04_train_model.py
+#   notebooks/05_validate_promote.py
+#   notebooks/06_deploy_serving.py
+#   notebooks/07_monitoring.py
+
+bundle:
+  name: insurance-fraud-mlops
+
+# -------------------------------------------------------------------------
+# Variables: overridable per target so dev/prod share one YAML.
+# -------------------------------------------------------------------------
+variables:
+  catalog:
+    description: "Unity Catalog name for data + features + models"
+    default: insurance_demo
+  notifications_email:
+    description: "Email that receives on-failure job notifications"
+    default: ml-ops-oncall@example.com
+  endpoint_name:
+    description: "Mosaic AI serving endpoint name"
+    default: fraud-detection-endpoint
+
+# -------------------------------------------------------------------------
+# Resources: one Job, one shared job-cluster, 7 notebook tasks.
+# -------------------------------------------------------------------------
+resources:
+  jobs:
+    insurance_fraud_pipeline:
+      name: "insurance_fraud_pipeline-${bundle.target}"
+
+      # Daily at 02:00 IST (Asia/Kolkata). Quartz-cron needs ss mm hh ... so
+      # the first 0 is seconds.
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "Asia/Kolkata"
+        pause_status: UNPAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.notifications_email}
+        no_alert_for_skipped_runs: true
+
+      max_concurrent_runs: 1
+
+      # Shared job cluster — autoscaled, Standard_DS3_v2, DBR 15.4 LTS ML.
+      job_clusters:
+        - job_cluster_key: fraud_pipeline_cluster
+          new_cluster:
+            spark_version: "15.4.x-cpu-ml-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            autoscale:
+              min_workers: 2
+              max_workers: 6
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              "spark.databricks.delta.preview.enabled": "true"
+
+      # ------------- Task DAG -------------------------------------------
+      tasks:
+
+        - task_key: ingest_bronze
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/01_ingest_bronze.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: "{{job.start_time.iso_date}}"
+          timeout_seconds: 1800
+
+        - task_key: transform_silver
+          depends_on:
+            - task_key: ingest_bronze
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/02_transform_silver.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: "{{job.start_time.iso_date}}"
+          timeout_seconds: 1800
+
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: transform_silver
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/03_feature_engineering.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: "{{job.start_time.iso_date}}"
+          timeout_seconds: 1800
+
+        - task_key: train_model
+          depends_on:
+            - task_key: feature_engineering
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/04_train_model.py
+            base_parameters:
+              catalog: ${var.catalog}
+              experiment_name: "/insurance_fraud/xgb_fraud_detection"
+              run_date: "{{job.start_time.iso_date}}"
+          timeout_seconds: 3600
+
+        - task_key: validate_promote
+          depends_on:
+            - task_key: train_model
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/05_validate_promote.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: "{{job.start_time.iso_date}}"
+              min_f1:  "0.72"
+              min_auc: "0.80"
+              max_psi: "0.20"
+          timeout_seconds: 1800
+
+        - task_key: deploy_serving
+          depends_on:
+            - task_key: validate_promote
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/06_deploy_serving.py
+            base_parameters:
+              catalog: ${var.catalog}
+              endpoint_name: ${var.endpoint_name}
+              scale_to_zero: "true"
+              workload_size: "Small"
+          timeout_seconds: 1800
+
+        - task_key: monitoring
+          depends_on:
+            - task_key: deploy_serving
+          job_cluster_key: fraud_pipeline_cluster
+          notebook_task:
+            notebook_path: ./notebooks/07_monitoring.py
+            base_parameters:
+              catalog: ${var.catalog}
+          timeout_seconds: 900
+
+# -------------------------------------------------------------------------
+# Targets: dev and prod.  Prod runs scheduled, dev is paused by default.
+# -------------------------------------------------------------------------
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: ${workspace.host}
+    variables:
+      catalog: insurance_demo_dev
+      endpoint_name: fraud-detection-endpoint-dev
+      notifications_email: ml-ops-dev@example.com
+    resources:
+      jobs:
+        insurance_fraud_pipeline:
+          schedule:
+            pause_status: PAUSED   # no auto-schedule in dev
+
+  prod:
+    mode: production
+    workspace:
+      host: ${workspace.host}
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: insurance_demo
+      endpoint_name: fraud-detection-endpoint
+      notifications_email: ml-ops-oncall@example.com
+    resources:
+      jobs:
+        insurance_fraud_pipeline:
+          schedule:
+            pause_status: UNPAUSED
