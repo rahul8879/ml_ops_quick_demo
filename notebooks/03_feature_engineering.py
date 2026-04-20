@@ -10,11 +10,11 @@
 
 from datetime import datetime
 
-dbutils.widgets.text("catalog",       "wcqmlopsdemo",                        "catalog")
-dbutils.widgets.text("silver_schema", "silver",                              "silver schema")
-dbutils.widgets.text("silver_table",  "clean_claims",                        "silver table")
-dbutils.widgets.text("gold_schema",   "gold",                                "gold schema")
-dbutils.widgets.text("feature_table", "claim_features",                      "feature table")
+dbutils.widgets.text("catalog",       "wcqmlopsdemo",                         "catalog")
+dbutils.widgets.text("silver_schema", "silver",                               "silver schema")
+dbutils.widgets.text("silver_table",  "clean_claims",                         "silver table")
+dbutils.widgets.text("gold_schema",   "gold",                                 "gold schema")
+dbutils.widgets.text("feature_table", "claim_features",                       "feature table")
 dbutils.widgets.text("run_date",      datetime.utcnow().strftime("%Y-%m-%d"), "run date")
 
 catalog       = dbutils.widgets.get("catalog")
@@ -29,59 +29,41 @@ feature_fqn = f"{catalog}.{gold_schema}.{feature_table}"
 
 # COMMAND ----------
 
-from pyspark.sql import functions as F
-from pyspark.sql.window import Window
+import pandas as pd
 
-silver_df = spark.table(silver_fqn)
+silver_pdf = spark.table(silver_fqn).toPandas()
 
 claim_date_col = None
 for c in ["ClaimDate", "DateOfIncident", "IncidentDate"]:
-    if c in silver_df.columns:
+    if c in silver_pdf.columns:
         claim_date_col = c
         break
 if claim_date_col is None:
-    silver_df = silver_df.withColumn("ClaimDate", F.current_date())
+    silver_pdf["ClaimDate"] = pd.Timestamp.utcnow().normalize()
     claim_date_col = "ClaimDate"
 
-current_year = F.lit(int(run_date.split("-")[0]))
+silver_pdf[claim_date_col]       = pd.to_datetime(silver_pdf[claim_date_col],       errors="coerce")
+silver_pdf["PolicyInceptionDate"] = pd.to_datetime(silver_pdf.get("PolicyInceptionDate"), errors="coerce")
 
-features_df = (
-    silver_df
-      .withColumn(
-          "claim_to_premium_ratio",
-          F.when(F.col("AnnualPremium") > 0, F.col("ClaimAmount") / F.col("AnnualPremium"))
-           .otherwise(F.lit(None).cast("double")),
-      )
-      .withColumn("vehicle_age",          (current_year - F.col("VehicleYear")).cast("int"))
-      .withColumn("high_deductible_flag", F.when(F.col("Deductible") > 1000, 1).otherwise(0).cast("int"))
-      .withColumn(
-          "days_since_policy_start",
-          F.datediff(F.col(claim_date_col), F.col("PolicyInceptionDate")).cast("int"),
-      )
-)
+current_year = int(run_date.split("-")[0])
 
-holder_col = "PolicyHolderID" if "PolicyHolderID" in features_df.columns else "PolicyNumber"
+df = silver_pdf.copy()
+df["claim_to_premium_ratio"] = df["ClaimAmount"] / df["AnnualPremium"].replace(0, pd.NA)
+df["vehicle_age"]            = (current_year - df["VehicleYear"]).astype("Int64")
+df["high_deductible_flag"]   = (df["Deductible"] > 1000).astype(int)
+df["days_since_policy_start"] = (df[claim_date_col] - df["PolicyInceptionDate"]).dt.days.astype("Int64")
 
-prior_w = (
-    Window.partitionBy(holder_col)
-          .orderBy(F.col(claim_date_col).asc_nulls_last())
-          .rowsBetween(Window.unboundedPreceding, -1)
-)
+holder_col = "PolicyHolderID" if "PolicyHolderID" in df.columns else "PolicyNumber"
+df = df.sort_values([holder_col, claim_date_col])
+df["prior_claim_count"]    = df.groupby(holder_col).cumcount()
+df["repeat_claimant_flag"] = (df["prior_claim_count"] > 1).astype(int)
 
-features_df = (
-    features_df
-      .withColumn("prior_claim_count",    F.count("*").over(prior_w).cast("int"))
-      .withColumn("repeat_claimant_flag", F.when(F.col("prior_claim_count") > 1, 1).otherwise(0).cast("int"))
-)
-
-if "Age" in features_df.columns:
-    features_df = features_df.withColumn(
-        "driver_age_bucket",
-        F.when(F.col("Age") < 25, "under_25")
-         .when(F.col("Age") < 40, "25_to_39")
-         .when(F.col("Age") < 60, "40_to_59")
-         .otherwise("60_plus"),
-    )
+if "Age" in df.columns:
+    df["driver_age_bucket"] = pd.cut(
+        df["Age"],
+        bins=[-1, 24, 39, 59, 200],
+        labels=["under_25", "25_to_39", "40_to_59", "60_plus"],
+    ).astype(str)
 
 keep = [
     "PolicyNumber",
@@ -96,14 +78,17 @@ keep = [
     "Deductible",
     "driver_age_bucket",
 ]
-keep = [c for c in keep if c in features_df.columns]
+keep = [c for c in keep if c in df.columns]
 
-features_out = (
-    features_df.select(*keep)
-               .dropna(subset=["PolicyNumber"])
-               .dropDuplicates(["PolicyNumber"])
-               .withColumn("feature_computed_at", F.current_timestamp())
+features_pdf = (
+    df[keep]
+      .dropna(subset=["PolicyNumber"])
+      .drop_duplicates(subset=["PolicyNumber"])
+      .reset_index(drop=True)
 )
+features_pdf["feature_computed_at"] = pd.Timestamp.utcnow()
+
+features_df = spark.createDataFrame(features_pdf)
 
 # COMMAND ----------
 
@@ -115,40 +100,11 @@ if not spark.catalog.tableExists(feature_fqn):
     fe.create_table(
         name=feature_fqn,
         primary_keys=["PolicyNumber"],
-        df=features_out,
-        description="Features for vehicle insurance claim fraud detection. Grain = PolicyNumber.",
-        tags={"layer": "gold", "domain": "insurance_fraud", "owner": "ds_team", "refresh": "daily"},
+        df=features_df,
+        description="Features for vehicle insurance claim fraud detection.",
     )
 else:
-    fe.write_table(name=feature_fqn, df=features_out, mode="merge")
-
-# COMMAND ----------
-
-column_docs = {
-    "PolicyNumber":            ("Primary key.",                                    {"role": "primary_key"}),
-    "claim_to_premium_ratio":  ("ClaimAmount / AnnualPremium.",                    {"role": "feature", "fraud_signal": "high"}),
-    "vehicle_age":             ("Current year minus VehicleYear.",                 {"role": "feature"}),
-    "high_deductible_flag":    ("1 if Deductible > 1000 else 0.",                  {"role": "feature", "type": "flag"}),
-    "days_since_policy_start": ("Days between PolicyInceptionDate and ClaimDate.", {"role": "feature"}),
-    "repeat_claimant_flag":    ("1 if policyholder has > 1 prior claims.",         {"role": "feature", "fraud_signal": "medium"}),
-    "prior_claim_count":       ("Count of prior claims by policyholder.",          {"role": "feature"}),
-    "ClaimAmount":             ("Raw claim amount.",                               {"role": "feature"}),
-    "AnnualPremium":           ("Annual premium.",                                 {"role": "feature"}),
-    "Deductible":              ("Policy deductible.",                              {"role": "feature"}),
-    "driver_age_bucket":       ("Bucketed driver age.",                            {"role": "feature", "type": "categorical"}),
-    "feature_computed_at":     ("Row computation timestamp.",                      {"role": "metadata"}),
-}
-
-cols = {c.name for c in spark.table(feature_fqn).schema.fields}
-for col, (comment, tags) in column_docs.items():
-    if col not in cols:
-        continue
-    safe = comment.replace("'", "''")
-    spark.sql(f"ALTER TABLE {feature_fqn} ALTER COLUMN `{col}` COMMENT '{safe}'")
-    pairs = ", ".join([f"'{k}' = '{v}'" for k, v in tags.items()])
-    spark.sql(f"ALTER TABLE {feature_fqn} ALTER COLUMN `{col}` SET TAGS ({pairs})")
-
-spark.sql(f"ALTER TABLE {feature_fqn} SET TAGS ('layer' = 'gold', 'domain' = 'insurance_fraud', 'pii' = 'false')")
+    fe.write_table(name=feature_fqn, df=features_df, mode="merge")
 
 # COMMAND ----------
 

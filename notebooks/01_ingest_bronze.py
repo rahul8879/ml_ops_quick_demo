@@ -52,19 +52,6 @@ bronze_stream = (
 
 # COMMAND ----------
 
-spark.sql(f"""
-    ALTER TABLE {bronze_fqn}
-    SET TBLPROPERTIES (
-        'delta.autoOptimize.optimizeWrite' = 'true',
-        'delta.autoOptimize.autoCompact'   = 'true',
-        'quality'                          = 'bronze'
-    )
-""")
-
-spark.sql(f"ALTER TABLE {bronze_fqn} SET TAGS ('layer' = 'bronze', 'domain' = 'insurance_fraud')")
-
-# COMMAND ----------
-
 row_count = spark.table(bronze_fqn).count()
 print(f"{bronze_fqn} -> {row_count:,}")
 display(spark.table(bronze_fqn).limit(5))

@@ -218,11 +218,7 @@ row = Row(
 )
 audit_df = spark.createDataFrame([row])
 
-if not spark.catalog.tableExists(validation_fqn):
-    audit_df.write.format("delta").saveAsTable(validation_fqn)
-    spark.sql(f"ALTER TABLE {validation_fqn} SET TAGS ('layer' = 'monitoring', 'domain' = 'insurance_fraud')")
-else:
-    audit_df.write.format("delta").mode("append").saveAsTable(validation_fqn)
+audit_df.write.format("delta").mode("append").saveAsTable(validation_fqn)
 
 display(spark.table(validation_fqn).orderBy(F.col("evaluated_at").desc()).limit(5))
 

@@ -39,11 +39,9 @@ date_cols   = ["ClaimDate", "PolicyInceptionDate", "DateOfIncident"]
 for c in int_cols:
     if c in df.columns:
         df = df.withColumn(c, F.col(c).cast(IntegerType()))
-
 for c in double_cols:
     if c in df.columns:
         df = df.withColumn(c, F.col(c).cast(DoubleType()))
-
 for c in date_cols:
     if c in df.columns:
         df = df.withColumn(c, F.coalesce(
@@ -75,13 +73,7 @@ df = (df.withColumn("silver_processed_at", F.current_timestamp())
 # COMMAND ----------
 
 if not spark.catalog.tableExists(silver_fqn):
-    (df.limit(0)
-       .write
-       .format("delta")
-       .option("delta.enableChangeDataFeed", "true")
-       .saveAsTable(silver_fqn))
-else:
-    spark.sql(f"ALTER TABLE {silver_fqn} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
+    df.limit(0).write.format("delta").saveAsTable(silver_fqn)
 
 df.createOrReplaceTempView("silver_source")
 
@@ -96,20 +88,6 @@ USING silver_source s
 WHEN MATCHED THEN UPDATE SET {update_set}
 WHEN NOT MATCHED THEN INSERT *
 """)
-
-# COMMAND ----------
-
-spark.sql(f"""
-    ALTER TABLE {silver_fqn}
-    SET TBLPROPERTIES (
-        'delta.enableChangeDataFeed'       = 'true',
-        'delta.autoOptimize.optimizeWrite' = 'true',
-        'delta.autoOptimize.autoCompact'   = 'true',
-        'quality'                          = 'silver'
-    )
-""")
-
-spark.sql(f"ALTER TABLE {silver_fqn} SET TAGS ('layer' = 'silver', 'domain' = 'insurance_fraud')")
 
 # COMMAND ----------
 
